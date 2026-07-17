@@ -1,0 +1,14 @@
+[project]
+name = "iqair-to-influxdb"
+version = "0.1.0"
+description = "Local BLE client and collector for IQAir HealthPro Plus XE purifiers"
+requires-python = ">=3.11"
+dependencies = [
+    "bleak>=0.22",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.22",
+]

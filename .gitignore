@@ -1,0 +1,11 @@
+.venv/
+.uv-cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Third-party mobile-app binaries retained only as local protocol evidence.
+.agents/artifacts/*.xapk
+.agents/artifacts/xapk/*.apk
+.agents/artifacts/xapk/icon.png
