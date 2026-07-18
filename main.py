@@ -28,12 +28,13 @@ DEFAULT_SETTINGS_PATH = Path("settings.toml")
 DEFAULT_AUTH_PATH = Path("imaq_config/auth.toml")
 DEFAULT_MEASUREMENT = "IQAir"
 CONNECTION_TAG_VALUE = "Bluetooth LE"
+SOURCE_TAG_VALUE = "IQAir_Device"
 
 INFLUX_FIELD_NAMES = (
-    ("fan_rpm", "Fan speed [rpm]"),
-    ("pm1_ugm3", "PM1 [ug/m^3]"),
-    ("pm25_ugm3", "PM2.5 [ug/m^3]"),
-    ("pm10_ugm3", "PM10 [ug/m^3]"),
+    ("fan_rpm", "FanSpeed[rpm]"),
+    ("pm1_ugm3", "PM1[ug/m^3]"),
+    ("pm25_ugm3", "PM2.5[ug/m^3]"),
+    ("pm10_ugm3", "PM10[ug/m^3]"),
 )
 
 
@@ -254,6 +255,7 @@ def build_influx_record(
         tags["Product name"] = product_name
     tags["MAC address"] = sample.mac_address
     tags["Connection"] = CONNECTION_TAG_VALUE
+    tags["source"] = SOURCE_TAG_VALUE
 
     return {
         "measurement": measurement,
