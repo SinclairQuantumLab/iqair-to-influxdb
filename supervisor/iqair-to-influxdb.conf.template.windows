@@ -1,0 +1,25 @@
+; Supervisor config file to run iqair-to-influxdb on Windows.
+; Copy this file to
+; %USERPROFILE%\Projects\supervisor\conf.d\iqair-to-influxdb.conf.
+; Refer to https://supervisord.org/configuration.html#program-x-section-settings
+; for details. Some Supervisor settings are not implemented by supervisor-win
+; and should be added only after testing them on Windows.
+;
+; This follows supervisor-windows/conf.d/[APPNAME].conf.template. The program
+; name below is also used to resolve
+; %USERPROFILE%\Projects\iqair-to-influxdb\Startup.ps1.
+
+[program:iqair-to-influxdb]
+command="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%(ENV_USERPROFILE)s\Projects\%(program_name)s\Startup.ps1"
+directory="%(ENV_USERPROFILE)s\Projects\%(program_name)s"
+process_name=%(program_name)s
+autostart=true
+startsecs=5
+startretries=5
+autorestart=unexpected
+stdout_logfile=%(here)s\logs\%(program_name)s_out.log
+stdout_logfile_maxbytes=2MB
+stdout_logfile_backups=2
+stderr_logfile=%(here)s\logs\%(program_name)s_err.log
+stderr_logfile_maxbytes=5MB
+stderr_logfile_backups=2

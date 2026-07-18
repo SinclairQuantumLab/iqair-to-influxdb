@@ -48,6 +48,11 @@ CONN_RESPONSE = 0x81
 DPRL_REQUEST = 0x13
 DPRL_RESPONSE = 0x93
 
+# A DPRL frame is five bytes of framing plus two bytes per parameter code. The
+# purifier accepts the 19-byte seven-code frame but rejects the 21-byte eight-code
+# frame with ATT error 0x0D (Invalid Attribute Value Length).
+MAX_DPRL_CODES_PER_REQUEST = 7
+
 STANDARD_CHARACTERISTICS = {
     "00002a00-0000-1000-8000-00805f9b34fb": ("device_name", "text"),
     "00002a23-0000-1000-8000-00805f9b34fb": ("system_id", "hex"),
@@ -99,8 +104,8 @@ class ParameterSpec:
 # Read-only identity opcodes recovered from the AirVisual Android app. The Wi-Fi
 # password opcode (4102) and all write/configuration opcodes are excluded.
 IDENTITY_PARAMETERS = (
-    ParameterSpec(1000, "serial_number", "reverse_text"),
-    ParameterSpec(1002, "product_name", "reverse_text"),
+    ParameterSpec(1000, "serial_number", "text"),
+    ParameterSpec(1002, "product_name", "text"),
     ParameterSpec(1003, "purifier_color", "uint"),
     ParameterSpec(1005, "application_firmware_version", "version"),
     ParameterSpec(1007, "application_firmware_crc", "hex_uint"),
@@ -115,15 +120,15 @@ IDENTITY_PARAMETERS = (
     ParameterSpec(1025, "certificate_version", "version"),
     ParameterSpec(1026, "certificate_nvm_version", "version"),
     ParameterSpec(1030, "ethernet_supported", "bool_uint"),
-    ParameterSpec(1040, "registration_number", "reverse_text"),
-    ParameterSpec(1100, "network_ip", "reverse_ipv4"),
-    ParameterSpec(1101, "network_netmask", "reverse_ipv4"),
-    ParameterSpec(1102, "network_gateway", "reverse_ipv4"),
+    ParameterSpec(1040, "registration_number", "text"),
+    ParameterSpec(1100, "network_ip", "ipv4"),
+    ParameterSpec(1101, "network_netmask", "ipv4"),
+    ParameterSpec(1102, "network_gateway", "ipv4"),
     ParameterSpec(1103, "network_interface", "uint"),
     ParameterSpec(1104, "network_interface_enabled", "bool_uint"),
     ParameterSpec(4060, "feature_set", "bitset"),
     ParameterSpec(4104, "wifi_mac_address", "mac"),
-    ParameterSpec(4108, "wifi_access_point_ssid", "reverse_text"),
+    ParameterSpec(4108, "wifi_access_point_ssid", "text"),
     ParameterSpec(4109, "wifi_access_point_mac", "mac"),
     ParameterSpec(4110, "wifi_rssi_dbm", "sint"),
     ParameterSpec(4120, "ethernet_mac_address", "mac"),
@@ -299,7 +304,7 @@ class IQAirSample:
 
     @property
     def fields(self) -> dict[str, int]:
-        """Return present numeric fields in an InfluxDB-friendly mapping."""
+        """Return present numeric values using stable code-facing names."""
 
         values = {
             "fan_rpm": self.fan_rpm,
@@ -409,19 +414,19 @@ def build_dprl_request(parameter_codes: Sequence[int]) -> bytes:
     return build_frame(DPRL_REQUEST, payload[::-1])
 
 
-def _clean_reverse_text(value: bytes) -> str:
-    """Decode a reversed, null-padded UTF-8 protocol string."""
+def _clean_text(value: bytes) -> str:
+    """Decode a null-padded UTF-8 protocol string."""
 
-    return value[::-1].rstrip(b"\x00").decode("utf-8", errors="replace").strip()
+    return value.rstrip(b"\x00").decode("utf-8", errors="replace").strip()
 
 
-def _printable_reverse_text(value: bytes) -> str | None:
-    """Decode reversed ASCII only when every non-null byte is printable."""
+def _printable_text(value: bytes) -> str | None:
+    """Decode ASCII only when every non-null byte is printable."""
 
-    reversed_value = value[::-1].rstrip(b"\x00")
-    if not reversed_value or not all(32 <= byte <= 126 for byte in reversed_value):
+    stripped_value = value.rstrip(b"\x00")
+    if not stripped_value or not all(32 <= byte <= 126 for byte in stripped_value):
         return None
-    return reversed_value.decode("ascii")
+    return stripped_value.decode("ascii")
 
 
 def decode_parameter(spec: ParameterSpec | None, value: bytes) -> Any:
@@ -433,12 +438,12 @@ def decode_parameter(spec: ParameterSpec | None, value: bytes) -> Any:
 
     if spec is None:
         return {"raw_hex": value.hex()}
-    if spec.kind == "reverse_text":
-        return _clean_reverse_text(value)
+    if spec.kind == "text":
+        return _clean_text(value)
     if spec.kind == "mac":
         return ":".join(f"{byte:02X}" for byte in value)
-    if spec.kind == "reverse_ipv4":
-        return ".".join(str(byte) for byte in value[::-1]) if len(value) == 4 else value.hex()
+    if spec.kind == "ipv4":
+        return ".".join(str(byte) for byte in value) if len(value) == 4 else value.hex()
     if spec.kind == "sint":
         return int.from_bytes(value, "little", signed=True) if value else None
     if spec.kind == "uint":
@@ -456,7 +461,7 @@ def decode_parameter(spec: ParameterSpec | None, value: bytes) -> Any:
             "raw_hex": value.hex(),
             "value": int.from_bytes(value, "little") if value else None,
         }
-        text = _printable_reverse_text(value)
+        text = _printable_text(value)
         if text is not None:
             decoded["text"] = text
         elif value:
@@ -649,8 +654,10 @@ class IQAirClient:
     exactly one verified purifier.
 
     Instances are reusable after :meth:`close`; each later :meth:`connect` creates
-    a fresh Bleak handle and protocol state. Commands on one connection are
-    serialized because the IQAir request/response protocol has no transaction ID.
+    a fresh Bleak handle and protocol state. :meth:`reconnect` first reuses the
+    cached resolved device and falls back to discovery only when needed. Commands
+    on one connection are serialized because the IQAir request/response protocol
+    has no transaction ID.
     """
 
     def __init__(
@@ -909,30 +916,23 @@ class IQAirClient:
     def _on_disconnect(self, _client: BleakClient) -> None:
         """Update local notification state after a Bleak disconnect callback."""
 
-        self._notify_started = False
+        if _client is self._client:
+            self._notify_started = False
 
-    async def connect(self) -> None:
-        """Resolve the selector, connect, validate GATT, and perform handshake.
+    async def _connect_device(
+        self,
+        device: IQAirDevice,
+        *,
+        pair: bool,
+        query_identity: bool,
+    ) -> None:
+        """Connect to one resolved device and initialize IQAir protocol state."""
 
-        Calling this method while already connected is a no-op. If setup fails,
-        partially acquired Bluetooth resources are released before the exception is
-        propagated.
-
-        Raises:
-            IQAirDeviceNotFoundError: If selector resolution finds no purifier.
-            IQAirAmbiguousDeviceError: If selector resolution is not unique.
-            IQAirProtocolError: If GATT validation or the handshake fails.
-        """
-
-        if self.is_connected:
-            return
-
-        device = await self._resolve_selector()
         target = device._backend_device or device.mac_address
         client = BleakClient(
             target,
             disconnected_callback=self._on_disconnect,
-            pair=self.pair,
+            pair=pair,
             timeout=self.connect_timeout,
         )
         self._client = client
@@ -954,10 +954,94 @@ class IQAirClient:
             self._notify_started = True
             await self._request(CONN_REQUEST, build_conn_request(), CONN_RESPONSE)
             self._device = replace(device, verified=True)
-            if self.query_identity_on_connect:
+            if query_identity:
                 await self.read_device_information()
         except Exception:
             await self.close()
+            raise
+
+    async def connect(self) -> None:
+        """Resolve the selector, connect, validate GATT, and perform handshake.
+
+        Calling this method while already connected is a no-op. If setup fails,
+        partially acquired Bluetooth resources are released before the exception is
+        propagated.
+
+        Raises:
+            IQAirDeviceNotFoundError: If selector resolution finds no purifier.
+            IQAirAmbiguousDeviceError: If selector resolution is not unique.
+            IQAirProtocolError: If GATT validation or the handshake fails.
+        """
+
+        if self.is_connected:
+            return
+
+        device = await self._resolve_selector()
+        await self._connect_device(
+            device,
+            pair=self.pair,
+            # Serial/automatic resolution already queried identity while
+            # verifying the candidate. Avoid repeating every optional DPRL read
+            # when opening the persistent session for that verified device.
+            query_identity=self.query_identity_on_connect and not device.verified,
+        )
+
+    async def reconnect(self, *, rediscover_on_failure: bool = True) -> None:
+        """Replace a stale BLE session while reusing cached device identity.
+
+        A previously verified target is attempted directly without requesting a
+        new OS pairing or repeating optional identity reads. If that direct path
+        fails, the configured selector is resolved again unless
+        ``rediscover_on_failure`` is false.
+
+        Args:
+            rediscover_on_failure: Fall back to fresh selector resolution after a
+                cached direct connection attempt fails.
+
+        Raises:
+            IQAirError: If IQAir discovery, validation, or handshake fails.
+            Exception: Any platform-specific Bleak connection failure.
+        """
+
+        cached_device = self._device
+        await self.close()
+
+        direct_error: Exception | None = None
+        if cached_device is not None:
+            try:
+                await self._connect_device(
+                    cached_device,
+                    pair=self.pair if not cached_device.verified else False,
+                    query_identity=(
+                        self.query_identity_on_connect and not cached_device.verified
+                    ),
+                )
+                return
+            except Exception as exc:
+                direct_error = exc
+                if not rediscover_on_failure:
+                    raise
+
+        try:
+            if isinstance(self.selector, IQAirDevice) and cached_device is not None:
+                candidates = await self.scan_devices(
+                    scan_seconds=self.scan_seconds,
+                    addresses=(cached_device.mac_address,),
+                )
+                device = self.select_device(candidates, cached_device.mac_address)
+            else:
+                device = await self._resolve_selector()
+            await self._connect_device(
+                device,
+                pair=self.pair,
+                query_identity=self.query_identity_on_connect,
+            )
+        except Exception as exc:
+            if direct_error is not None:
+                exc.add_note(
+                    "Cached reconnect also failed: "
+                    f"{type(direct_error).__name__}: {direct_error}"
+                )
             raise
 
     async def close(self) -> None:
@@ -1010,7 +1094,13 @@ class IQAirClient:
         client, stream, lock = self._require_connected()
         async with lock:
             start_index = len(stream.frames)
-            await client.write_gatt_char(WRITE_UUID, request_frame, response=True)
+            try:
+                await client.write_gatt_char(WRITE_UUID, request_frame, response=True)
+            except Exception as exc:
+                raise IQAirProtocolError(
+                    f"failed to write 0x{request_code:02X} request "
+                    f"({len(request_frame)} bytes): {type(exc).__name__}: {exc}"
+                ) from exc
             response = await stream.wait_for(
                 response_code,
                 start_index,
@@ -1030,7 +1120,7 @@ class IQAirClient:
         self,
         parameter_codes: Sequence[int],
         *,
-        chunk_size: int = 12,
+        chunk_size: int = MAX_DPRL_CODES_PER_REQUEST,
     ) -> tuple[dict[int, IQAirParameterValue], tuple[IQAirFrame, ...]]:
         """Read deduplicated parameter codes and retain diagnostic response frames."""
 
@@ -1038,6 +1128,11 @@ class IQAirClient:
             return {}, ()
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
+        if chunk_size > MAX_DPRL_CODES_PER_REQUEST:
+            raise ValueError(
+                f"chunk_size must not exceed {MAX_DPRL_CODES_PER_REQUEST}; "
+                "larger DPRL frames exceed the purifier's GATT value limit"
+            )
 
         values: dict[int, IQAirParameterValue] = {}
         frames: list[IQAirFrame] = []
@@ -1056,13 +1151,15 @@ class IQAirClient:
         self,
         parameter_codes: Sequence[int],
         *,
-        chunk_size: int = 12,
+        chunk_size: int = MAX_DPRL_CODES_PER_REQUEST,
     ) -> dict[int, IQAirParameterValue]:
         """Read arbitrary parameter codes through the proven DPRL read path.
 
         Args:
             parameter_codes: Numeric read-only parameter identifiers.
-            chunk_size: Maximum codes included in each request frame.
+            chunk_size: Maximum codes included in each request frame. Values above
+                :data:`MAX_DPRL_CODES_PER_REQUEST` are rejected because the
+                resulting GATT write is too long for the purifier.
 
         Returns:
             Mapping keyed by parameter code. Unsupported or omitted device values
@@ -1118,7 +1215,10 @@ class IQAirClient:
 
         standard_information, errors = await self._read_standard_information()
         values: dict[int, IQAirParameterValue] = {}
-        for codes in _chunks([parameter.code for parameter in IDENTITY_PARAMETERS], 12):
+        for codes in _chunks(
+            [parameter.code for parameter in IDENTITY_PARAMETERS],
+            MAX_DPRL_CODES_PER_REQUEST,
+        ):
             try:
                 group_values, _frames = await self._read_parameters_with_frames(codes)
                 values.update(group_values)
@@ -1183,6 +1283,7 @@ class IQAirClient:
 __all__ = [
     "IQAIR_COMPANY_ID",
     "IQAIR_SERVICE_UUID",
+    "MAX_DPRL_CODES_PER_REQUEST",
     "IQAirAmbiguousDeviceError",
     "IQAirClient",
     "IQAirDevice",

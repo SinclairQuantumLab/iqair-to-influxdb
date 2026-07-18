@@ -4,6 +4,8 @@
 .ruff_cache/
 __pycache__/
 *.py[cod]
+settings.toml
+imaq_config/
 
 # Third-party mobile-app binaries retained only as local protocol evidence.
 .agents/artifacts/*.xapk

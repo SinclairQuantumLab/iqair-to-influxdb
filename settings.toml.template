@@ -1,0 +1,30 @@
+# Settings for the IQAir BLE to InfluxDB collector.
+# Create settings.toml beside this file and update the device identifier.
+
+# Serial number is recommended. A BLE MAC address is also accepted.
+device_identifier = "<serial number or MAC address>"
+
+# InfluxDB measurement name.
+measurement = "IQAir"
+
+# Seconds between polling-cycle start times.
+interval_s = 30
+
+# Delay before the one local BLE reconnect and measurement retry.
+reconnect_delay_s = 10
+
+# Total unresolved polling failures allowed during this process lifetime.
+# Successful cycles do not reset this counter.
+exception_threshold = 3
+
+# Request OS pairing during the first connection after process startup.
+# Reconnects first reuse the existing OS bond and cached BLE target.
+pair_on_startup = true
+
+# BLE scan, connection, and IQAir response timeouts in seconds.
+scan_seconds = 10
+connect_timeout_s = 20
+response_timeout_s = 6
+
+# Relative paths are resolved from the directory containing settings.toml.
+auth_path = "imaq_config/auth.toml"

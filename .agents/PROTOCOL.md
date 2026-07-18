@@ -27,6 +27,14 @@ The notify characteristic required authentication before pairing. A passive noti
 subscription produced no measurements; the device responds after a request is
 written.
 
+### Live-verified write limit
+
+On the known purifier, the write characteristic accepts at most a 20-byte
+attribute value even though Bleak reports an MTU of 517. A seven-code DPRL frame is
+19 bytes and succeeds; an eight-code frame is 21 bytes and is rejected with ATT
+error `0x0D` (`Invalid Attribute Value Length`). Production requests therefore use
+at most seven parameter codes per DPRL frame.
+
 ## Frame Format
 
 ### Live and offline verified
@@ -88,7 +96,10 @@ value bytes
 ```
 
 The app reverses the complete parameter-code region when building a list request.
-String values such as product name and serial number are reversed on the wire.
+Live responses showed that value bytes themselves are already in display/network
+order: product name, serial number, registration number, and SSID are normal text,
+while IPv4 values use normal network byte order. They must not be reversed while
+decoding a response.
 
 ## Measurement Parameters
 
@@ -109,11 +120,16 @@ Known live measurement frame:
 
 Decoded values were fan RPM `2805` and PM1/PM2.5/PM10 `43`.
 
+The refactored `IQAirClient` was live verified again on 2026-07-17 and returned fan
+RPM `807` with PM1/PM2.5/PM10 all equal to `1`.
+
 ## Identification Parameters
 
 These codes came from static AirVisual app analysis. `iqair_client.py` requests
-them through its generic read-only DPRL method. Serial and metadata responses still
-need live verification.
+them through its generic read-only DPRL method. On 2026-07-17 the known purifier
+live-returned codes `1000`, `1002`, `1003`, `1007`, `1012`, `1013`, `1014`, `1015`,
+`1040`, `1100`, `1101`, `1102`, `1103`, `4060`, `4104`, `4108`, `4109`, and `4110`.
+Codes absent from that response remain unverified.
 
 | Code | App parameter | Output field |
 | ---: | --- | --- |

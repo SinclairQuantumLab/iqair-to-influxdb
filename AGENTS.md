@@ -25,12 +25,23 @@ Before changing code, read these files in order:
   location before treating a missing advertisement as a code regression.
 - `iqair_client.py` is the reusable BLE library and the single source of truth for
   discovery, framing, connection ownership, identity, and measurement reads.
+- `main.py` is the long-running collector and the single source of truth for
+  polling policy, lifetime error accounting, InfluxDB record naming, and runtime
+  resource cleanup.
 - `query_device.py` is a thin discovery and identification CLI over the library.
 - `iqair_test.py` is a thin one-shot measurement CLI over the library.
+- `Startup_bash` and `Startup.ps1` are thin OS launch wrappers. Keep application
+  behavior in `main.py`; the wrappers must execute the prepared local `.venv`
+  directly and must not run `uv`, resolve dependencies, or update `uv.lock`.
 - Do not duplicate protocol implementations back into the CLI files.
+- Keep Python-facing sample names in `snake_case`; map them to the documented
+  human-readable InfluxDB field and tag names only at the `main.py` write boundary.
+- Device-specific settings belong in ignored `settings.toml`; InfluxDB credentials
+  come from the private `imaq_config/auth.toml` file.
 - Runtime and development dependencies are managed by `pyproject.toml` and
-  `uv.lock`. Run `uv sync`, then use `uv run`; do not add duplicate PEP 723
-  metadata to root runtime files.
+  `uv.lock`. Run `uv sync` explicitly during installation or updates, then use
+  `uv run` for interactive commands; do not add duplicate PEP 723 metadata to
+  root runtime files.
 - Standalone scripts under `.agents/probes/` may retain PEP 723 metadata because
   they are independent investigations with probe-specific dependencies.
 - Files under `.agents/probes/` are investigation utilities, not production

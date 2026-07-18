@@ -19,7 +19,7 @@ def compact_value(value: Any) -> str:
     return str(value)
 
 
-def print_human_report(devices: list[IQAirDevice], *, scan_only: bool) -> None:
+def print_result(devices: list[IQAirDevice], *, scan_only: bool) -> None:
     mode = "advertisement candidate" if scan_only else "IQAir candidate"
     print(f"Found {len(devices)} {mode}(s).")
     if not devices:
@@ -83,7 +83,7 @@ async def async_main(args: argparse.Namespace) -> int:
         }
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        print_human_report(devices, scan_only=args.scan_only)
+        print_result(devices, scan_only=args.scan_only)
 
     if args.scan_only:
         return 0 if devices else 1

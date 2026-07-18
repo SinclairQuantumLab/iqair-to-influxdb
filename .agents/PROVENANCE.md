@@ -87,24 +87,44 @@ treated as a stable public API.
 It is not part of Androguard, JADX, IQAir, or Android SDK tooling. It was created
 because Java/JADX was unavailable in the original environment.
 
-## Root Runtime Files
+## Runtime and Deployment Files
 
 | File | Role |
 | --- | --- |
 | `iqair_client.py` | Reusable async BLE library and opt-in scan/discover/sample demo; source of truth for discovery, connection ownership, protocol framing, identity, and measurements |
+| `main.py` | Long-running collector; owns polling, reconnect/retry policy, lifetime exception accounting, InfluxDB record mapping, and cleanup |
 | `iqair_test.py` | Thin one-shot PM and fan-RPM CLI over `IQAirClient` |
 | `query_device.py` | Thin scan, pairing, verification, and metadata-listing CLI over `IQAirClient` |
 | `test_iqair_client.py` | Offline protocol, selection, connection-guard, and sample-normalization tests |
-| `supervisor_helper.py` | User-provided timestamped logging helper; not currently imported by the IQAir library or CLIs |
+| `test_main.py` | Offline collector configuration, schema, reconnect, exception-counter, and cleanup tests |
+| `settings.toml.template` | Non-secret device, polling, timeout, and auth-path settings template |
+| `Startup_bash` | Linux launch wrapper copied from `nut-to-influxdb/Startup_bash`; activates `.venv` and runs the collector directly |
+| `Startup.ps1` | Windows launch wrapper copied from the generic `supervisor-windows/python/Startup.ps1`; runs `.venv\Scripts\python.exe` directly |
+| `supervisor/__init__.py` | Marks the local Supervisor support directory as an explicit Python package |
+| `supervisor/iqair-to-influxdb.conf.template` | Linux Supervisor configuration template for the long-running collector |
+| `supervisor/iqair-to-influxdb.conf.template.windows` | Windows `supervisor-win` app configuration based on the lab's current generic `[APPNAME].conf.template`; this is the formatting reference for app templates |
+| `supervisor/supervisor_helper.py` | User-provided timestamped logging helper used by `main.py` |
 | `pyproject.toml` | `uv init --bare` project metadata and runtime/development dependency declarations |
 | `uv.lock` | Generated, reproducible dependency lockfile |
-| `README.md` | Human-facing environment and command quick start |
+| `README.md` | User-oriented installation, configuration, operation, schema, Supervisor, and troubleshooting manual |
 
-The root runtime files are locally authored and use the `uv` project environment.
-They depend on `bleak`; `pytest` and `ruff` are development dependencies. Independent
-scripts under `.agents/probes/` retain PEP 723 metadata for probe-specific
-dependencies. `supervisor_helper.py` belongs to the user and should be preserved
-unless integration is explicitly requested.
+The runtime files are locally authored and use the `uv` project environment. They
+depend on `bleak` and `influxdb-client`; `pytest` and `ruff` are development
+dependencies. Independent scripts under `.agents/probes/` retain PEP 723 metadata
+for probe-specific dependencies. `supervisor/supervisor_helper.py` belongs to the
+user and is retained as the collector's stdout/stderr logging boundary. Grouping
+the helper and deployment template under `supervisor/` follows the newer layout
+observed in the lab's `nut-to-influxdb`, `multivisor-to-influxdb`, and
+`koheron_ctl-to-influxdb` repositories on 2026-07-17. `Startup_bash` is copied
+from
+`https://github.com/SinclairQuantumLab/nut-to-influxdb/blob/main/Startup_bash`.
+`Startup.ps1` is copied from
+`https://github.com/SinclairQuantumLab/supervisor-windows/blob/main/python/Startup.ps1`;
+the Pico TC-08 launcher was also reviewed, but its Pico-specific serial-number,
+terminal-layout, and pause behavior were intentionally not copied. Both IQAir
+wrappers execute the prepared `.venv` directly and never invoke `uv`.
+The Windows app configuration follows
+`https://github.com/SinclairQuantumLab/supervisor-windows/blob/main/conf.d/%5BAPPNAME%5D.conf.template`.
 
 ## Generated Caches
 

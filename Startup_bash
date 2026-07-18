@@ -1,0 +1,32 @@
+#!/bin/bash -i
+# bash script to run the specified python scirpt,
+# independent of the PWD this bash script is run from.
+
+# script to run
+py_path="./main.py"
+
+# move working directory to the project folder
+echo ">>> cd to the app directory..."
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+# echo $SCRIPT_DIR
+cd "$SCRIPT_DIR"
+echo "<<< Working directory set to: ${PWD}"
+echo
+
+# activate venv
+echo ">>> venv activating..."
+venv_path=".venv/bin/activate"
+source "$venv_path"
+echo "<<< venv activated: $venv_path"
+echo
+echo
+
+# run the main script
+echo ">>> Starting app: $py_path ..."
+echo
+exec python $py_path
+echo
+echo "<<< End of the script: $py_path"
+
+echo
+read -p "Press Enter to continue..."
