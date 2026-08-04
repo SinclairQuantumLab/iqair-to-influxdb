@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import iqair_client
 from iqair_client import (
     DPRL_RESPONSE,
     IQAirClient,
@@ -149,6 +150,125 @@ def test_disconnected_client_rejects_commands() -> None:
         client = IQAirClient("10:97:BD:09:3A:D2")
         with pytest.raises(IQAirNotConnectedError):
             await client.read_measurements()
+
+    asyncio.run(run())
+
+
+def test_discover_devices_falls_back_to_all_observed_devices_when_no_iqair_company_id_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        fallback = IQAirDevice(
+            mac_address="10:97:BD:09:3A:D2",
+            advertised_name="fallback-device",
+            manufacturer_company_id=None,
+        )
+
+        @classmethod
+        async def fake_scan_devices(
+            cls: type[IQAirClient],
+            *,
+            scan_seconds: float = 10.0,
+            addresses: tuple[str, ...] = (),
+            include_all: bool = False,
+        ) -> list[IQAirDevice]:
+            assert include_all is False
+            return [fallback]
+
+        monkeypatch.setattr(IQAirClient, "scan_devices", fake_scan_devices)
+
+        async def fake_connect(self: IQAirClient) -> None:
+            self._device = self.selector if isinstance(self.selector, IQAirDevice) else None
+
+        async def fake_close(self: IQAirClient) -> None:
+            return None
+
+        monkeypatch.setattr(IQAirClient, "connect", fake_connect)
+        monkeypatch.setattr(IQAirClient, "close", fake_close)
+
+        results = await IQAirClient.discover_devices(scan_seconds=1.0, query_identity=True)
+
+        assert results == [fallback]
+
+    asyncio.run(run())
+
+
+def test_connect_keeps_verified_device_when_identity_reads_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run() -> None:
+        candidate = IQAirDevice(
+            mac_address="10:97:BD:09:3A:D2",
+            advertised_name="fallback-device",
+            manufacturer_company_id=0x060A,
+        )
+        client = IQAirClient(candidate, pair=False, query_identity_on_connect=True)
+
+        class FakeCharacteristic:
+            properties = {"read"}
+
+        class FakeServices:
+            def __init__(self) -> None:
+                self._characteristics = {
+                    iqair_client.IQAIR_SERVICE_UUID: FakeCharacteristic(),
+                    iqair_client.WRITE_UUID: FakeCharacteristic(),
+                    iqair_client.NOTIFY_UUID: FakeCharacteristic(),
+                }
+
+            def get_characteristic(self, uuid: str) -> FakeCharacteristic | None:
+                return self._characteristics.get(uuid)
+
+        class FakeBleakClient:
+            def __init__(self, target: object, *args: object, **kwargs: object) -> None:
+                self.target = target
+                self.services = FakeServices()
+                self.is_connected = False
+
+            async def connect(self) -> None:
+                self.is_connected = True
+
+            async def start_notify(self, _uuid: str, _callback: object) -> None:
+                return None
+
+        monkeypatch.setattr(iqair_client, "BleakClient", FakeBleakClient)
+
+        async def fake_request(_request_code: int, _request_frame: bytes, _response_code: int) -> object:
+            return object()
+
+        monkeypatch.setattr(client, "_request", fake_request)
+
+        async def fake_read_device_information() -> IQAirDevice:
+            raise iqair_client.IQAirProtocolError("identity metadata unavailable")
+
+        monkeypatch.setattr(client, "read_device_information", fake_read_device_information)
+
+        await client._connect_device(candidate, pair=False, query_identity=True)
+
+        assert client.device is not None
+        assert client.device.verified is True
+        assert client.device.errors == ()
+
+    asyncio.run(run())
+
+
+def test_resolve_selector_falls_back_to_matching_unverified_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        candidate = IQAirDevice(
+            mac_address="10:97:BD:09:3A:D2",
+            serial_number="050S-B009-T080-1",
+            advertised_name="fallback-device",
+            manufacturer_company_id=0x060A,
+        )
+        client = IQAirClient("050S-B009-T080-1", pair=False)
+
+        async def fake_discover_devices(**_kwargs: object) -> list[IQAirDevice]:
+            return [candidate]
+
+        monkeypatch.setattr(IQAirClient, "discover_devices", fake_discover_devices)
+
+        resolved = await client._resolve_selector()
+
+        assert resolved is candidate
 
     asyncio.run(run())
 

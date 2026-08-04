@@ -98,6 +98,22 @@ equal to `1`. The command exited with status 0.
 
 ## Offline-Verified Results
 
+Date: 2026-08-03.
+
+Command:
+
+```powershell
+uv run query_device.py --scan-seconds 5 --response-timeout 4
+```
+
+Observed:
+
+- The purifier was discovered successfully over BLE from the workspace.
+- The CLI reported the expected BLE MAC `10:97:BD:09:3A:D2`, serial number
+  `050S-B009-T080-1`, and product name `HealthPro Plus B009-T`.
+- The live scan also returned the current network IP `192.168.50.30` and Wi-Fi
+  SSID `SinclairLab` from the device metadata.
+
 Date: 2026-07-16.
 
 For `query_device.py`:

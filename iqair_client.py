@@ -759,15 +759,20 @@ class IQAirClient:
         *,
         scan_seconds: float = 10.0,
         addresses: Sequence[str] = (),
+        include_all: bool = False,
     ) -> list[IQAirDevice]:
-        """Scan advertisements and return IQAir company-ID candidates.
+        """Scan advertisements and return BLE candidates.
 
         This method does not connect or pair. Explicit ``addresses`` are included
-        even when their manufacturer advertisement is not seen.
+        even when their manufacturer advertisement is not seen. When no IQAir
+        company-ID advertisements are observed, the scan falls back to all
+        observed devices so nearby purifiers can still be attempted.
 
         Args:
             scan_seconds: Time to listen for BLE advertisements.
             addresses: Known BLE MAC addresses to include as forced candidates.
+            include_all: Return every observed device even when some advertise the
+                IQAir company ID.
 
         Returns:
             Candidates sorted by strongest RSSI and then BLE MAC.
@@ -776,14 +781,20 @@ class IQAirClient:
         discovered = await BleakScanner.discover(timeout=scan_seconds, return_adv=True)
         candidates: list[IQAirDevice] = []
         by_address: dict[str, IQAirDevice] = {}
+        observed_candidates: list[IQAirDevice] = []
+        company_id_candidates: list[IQAirDevice] = []
         for device, advertisement in discovered.values():
             try:
                 candidate = _advertisement_device(device, advertisement)
             except ValueError:
                 continue
             by_address[candidate.mac_address] = candidate
+            observed_candidates.append(candidate)
             if IQAIR_COMPANY_ID in advertisement.manufacturer_data:
-                candidates.append(candidate)
+                company_id_candidates.append(candidate)
+
+        use_all_observed = include_all or not company_id_candidates
+        candidates = observed_candidates if use_all_observed else company_id_candidates
 
         candidate_addresses = {candidate.mac_address for candidate in candidates}
         for address in addresses:
@@ -893,7 +904,14 @@ class IQAirClient:
                 scan_seconds=self.scan_seconds,
                 addresses=(normalized,),
             )
-            return self.select_device(devices, normalized)
+            matches = [device for device in devices if device.matches(normalized)]
+            if not matches:
+                raise IQAirDeviceNotFoundError(f"no IQAir purifier matches {normalized!r}")
+            if len(matches) > 1:
+                raise IQAirAmbiguousDeviceError(
+                    f"{len(matches)} IQAir purifiers match {normalized!r}"
+                )
+            return matches[0]
 
         devices = await self.discover_devices(
             scan_seconds=self.scan_seconds,
@@ -902,9 +920,24 @@ class IQAirClient:
             response_timeout=self.response_timeout,
             query_identity=True,
         )
-        verified = [device for device in devices if device.verified]
         if isinstance(self.selector, str):
-            return self.select_device(verified, self.selector)
+            matches = [device for device in devices if device.matches(self.selector)]
+            if not matches:
+                raise IQAirDeviceNotFoundError(f"no IQAir purifier matches {self.selector!r}")
+            verified = [device for device in matches if device.verified]
+            if verified:
+                if len(verified) > 1:
+                    raise IQAirAmbiguousDeviceError(
+                        f"{len(verified)} IQAir purifiers match {self.selector!r}"
+                    )
+                return verified[0]
+            if len(matches) > 1:
+                raise IQAirAmbiguousDeviceError(
+                    f"{len(matches)} IQAir purifiers match {self.selector!r}"
+                )
+            return matches[0]
+
+        verified = [device for device in devices if device.verified]
         if not verified:
             raise IQAirDeviceNotFoundError("no verified IQAir purifier was found")
         if len(verified) > 1:
@@ -941,7 +974,7 @@ class IQAirClient:
         self._command_lock = asyncio.Lock()
 
         try:
-            await client.connect()
+            await asyncio.wait_for(client.connect(), timeout=self.connect_timeout)
             service_uuids = {service.uuid.lower() for service in client.services}
             if IQAIR_SERVICE_UUID not in service_uuids:
                 raise IQAirProtocolError("IQAir custom GATT service was not found")
@@ -950,12 +983,24 @@ class IQAirClient:
             if client.services.get_characteristic(NOTIFY_UUID) is None:
                 raise IQAirProtocolError("IQAir notify characteristic was not found")
 
-            await client.start_notify(NOTIFY_UUID, self._on_notification)
+            await asyncio.wait_for(
+                client.start_notify(NOTIFY_UUID, self._on_notification),
+                timeout=self.connect_timeout,
+            )
             self._notify_started = True
-            await self._request(CONN_REQUEST, build_conn_request(), CONN_RESPONSE)
+            await asyncio.wait_for(
+                self._request(CONN_REQUEST, build_conn_request(), CONN_RESPONSE),
+                timeout=self.response_timeout,
+            )
             self._device = replace(device, verified=True)
             if query_identity:
-                await self.read_device_information()
+                try:
+                    await self.read_device_information()
+                except Exception as exc:
+                    self._device = replace(
+                        self._device,
+                        errors=(*self._device.errors, f"identity metadata: {type(exc).__name__}: {exc}"),
+                    )
         except Exception:
             await self.close()
             raise

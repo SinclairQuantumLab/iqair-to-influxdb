@@ -30,6 +30,9 @@ alternate-settings commands continue to use `uv run` explicitly.
 - On 2026-07-17 the user returned within Bluetooth range and explicitly resumed
   live testing. Confirm proximity again in a later session before interpreting a
   missing advertisement as a regression.
+- On 2026-08-03 the purifier was again detected successfully from the same
+  workspace after the discovery fallback was updated to try all observed BLE
+  devices when no IQAir company-ID advertisement was present.
 - The refactored client, discovery CLI, identity reads, and one-shot measurement
   are now live verified on Windows with Bleak `3.0.2`.
 - On 2026-07-17 the collector's `--once --dry-run` path was live verified against
