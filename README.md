@@ -20,13 +20,16 @@ while setting up or troubleshooting this collector.
 
 ## Quick installation
 
-Clone the project, enter its directory, and synchronize the Python environment:
+1. `git clone` this repo to `%USERPROFILE%\Projects\`:
+  
+    ```powershell
+    cd $HOME/Projects/
+    git clone --recurse-submodules https://github.com/SinclairQuantumLab/iqair-to-influxdb.git 
+    ```
 
-```bash
-uv sync
-```
+    > **NOTE**: the `--recurse-submodules` option clones [`imaq-secret`](https://github.com/SinclairQuantumLab/imaq-secret.git) repo for the credential to access to our InfluxDB together at the right location in this repo.
 
-For upload-enabled runs, place the lab's private `imaq_config` repository in this
+For upload-enabled runs, place the lab's private `imaq-secret` repository in this
 project so that the following file exists. This step may be skipped for
 `--dry-run`:
 
@@ -90,10 +93,6 @@ physically within Bluetooth range; being on the same LAN is irrelevant.
 | `scan_seconds` | `10` | BLE discovery timeout |
 | `connect_timeout_s` | `20` | BLE connection timeout |
 | `response_timeout_s` | `6` | IQAir request/response timeout |
-| `auth_path` | `imaq_config/auth.toml` | InfluxDB authentication file |
-
-Relative `auth_path` values are resolved from the directory containing the
-selected settings file.
 
 ## Test one sample
 
@@ -260,8 +259,6 @@ reference for this app's Supervisor templates.
   task.
 - **A startup wrapper cannot find the project venv:** run `uv sync` in this
   IQAir project as the same account that runs Supervisor.
-- **Configuration error:** confirm `settings.toml` exists and its `auth_path`
-  points to a readable TOML file containing `[influxdb]`.
 - **InfluxDB outage:** the write failure consumes one lifetime exception but does
   not deliberately disconnect a healthy BLE session.
 - **Repeated BLE failure:** the app tries the cached device first, then performs

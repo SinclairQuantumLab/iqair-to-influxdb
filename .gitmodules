@@ -1,0 +1,3 @@
+[submodule "imaq-secret"]
+	path = imaq-secret
+	url = https://github.com/SinclairQuantumLab/imaq-secret.git

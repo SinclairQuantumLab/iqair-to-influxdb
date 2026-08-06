@@ -1,3 +1,6 @@
+# IMAQ Lab secret repo
+imaq-secret/*
+
 .venv/
 .uv-cache/
 .pytest_cache/

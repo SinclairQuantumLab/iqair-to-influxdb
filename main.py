@@ -25,7 +25,7 @@ from supervisor.supervisor_helper import log, log_error, log_warn
 
 
 DEFAULT_SETTINGS_PATH = Path("settings.toml")
-DEFAULT_AUTH_PATH = Path("imaq_config/auth.toml")
+DEFAULT_AUTH_PATH = Path("imaq-secret/auth.toml")
 DEFAULT_MEASUREMENT = "IQAir"
 CONNECTION_TAG_VALUE = "Bluetooth LE"
 SOURCE_TAG_VALUE = "IQAir_Device"
@@ -186,7 +186,8 @@ def load_settings(path: str | Path) -> AppSettings:
         if value <= 0:
             raise ValueError(f"settings.{key} must be positive")
 
-    auth_value = values.get("auth_path", str(DEFAULT_AUTH_PATH))
+    # auth_value = values.get("auth_path", str(DEFAULT_AUTH_PATH))
+    auth_value = str(DEFAULT_AUTH_PATH)
     if not isinstance(auth_value, str) or not auth_value.strip():
         raise ValueError("settings.auth_path must be a nonempty path string")
     auth_path = Path(auth_value).expanduser()
