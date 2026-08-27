@@ -29,35 +29,19 @@ while setting up or troubleshooting this collector.
 
     > **NOTE**: the `--recurse-submodules` option clones [`imaq-secret`](https://github.com/SinclairQuantumLab/imaq-secret.git) repo for the credential to access to our InfluxDB together at the right location in this repo.
 
-For upload-enabled runs, place the lab's private `imaq-secret` repository in this
-project so that the following file exists. This step may be skipped for
-`--dry-run`:
+2. Create the local settings file from `settings.toml.template`:
 
-```text
-imaq_config/auth.toml
-```
+    - Linux bash terminal:
 
-The file must contain an InfluxDB table with `url`, `token`, `org`, and `bucket`:
+        ```bash
+        cp settings.toml.template settings.toml
+        ```
 
-```toml
-[influxdb]
-url = "https://influxdb.example.org"
-token = "..."
-org = "..."
-bucket = "..."
-```
+    - Windows PowerShell:
 
-Create the local settings file from `settings.toml.template`:
-
-```bash
-cp settings.toml.template settings.toml
-```
-
-PowerShell equivalent:
-
-```powershell
-Copy-Item .\settings.toml.template .\settings.toml
-```
+      ```powershell
+      Copy-Item .\settings.toml.template .\settings.toml
+      ```
 
 ## Find and pair the purifier
 
