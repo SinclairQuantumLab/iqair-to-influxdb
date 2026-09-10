@@ -7,8 +7,9 @@ imaq-secret/*
 .ruff_cache/
 __pycache__/
 *.py[cod]
-settings.toml
+settings*.toml
 imaq_config/
+Startup_*.sh
 
 # Third-party mobile-app binaries retained only as local protocol evidence.
 .agents/artifacts/*.xapk
